@@ -94,6 +94,8 @@ async function saveOnline(){
   catch(e){ console.error(e); setSync("● Помилка синхронізації",false); alert("Не вдалося зберегти онлайн. Перевір Firebase Realtime Database rules."); }
 }
 function edit(id,k,v){let m=data.matches.find(x=>x.id===id);m[k]=v;saveOnline();render()}
+window.openTab = openTab;
+window.edit = edit;
 
 onValue(tournamentRef, async (snapshot)=>{
   try {
