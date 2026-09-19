@@ -41,6 +41,7 @@ button.action{background:#101827;color:white;border:0;padding:9px 12px;border-ra
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB2i-s7DtWnLj1izs9RHOjv6lwl3bpzoNo",
@@ -52,72 +53,188 @@ const firebaseConfig = {
   appId: "1:742260821532:web:632463dde333b49cdad9d9"
 };
 
+// Після створення твого Firebase-користувача впиши сюди його UID.
+// Це додатковий захист для адмінки. Firebase Rules теж мають перевіряти цей UID.
+const ADMIN_UID = "ZBOzMFg4IcMsxbKsk8KV7oixwnF3";
+
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
 const tournamentRef = ref(db, "tournament");
 
 const teams=["ІП 12","ІП 21","ІП 22","МТ 11","МТ 12","МТ 21","МТ 22","КІ 11","КІ 12","КІ 13","ТК 12","КН 11"];
 const groups={A:[1,2,3,4],B:[5,6,7,8],C:[9,10,11,12]};
-const defaultData={matches:[
-{id:1,a:1,b:2,sa:0,sb:0,status:"LIVE",time:"Матч 1"},
-{id:2,a:3,b:4,sa:0,sb:0,status:"scheduled",time:"Матч 2"},
-{id:3,a:5,b:6,sa:0,sb:0,status:"scheduled",time:"Матч 3"},
-{id:4,a:7,b:8,sa:0,sb:0,status:"scheduled",time:"Матч 4"},
-{id:5,a:9,b:10,sa:0,sb:0,status:"scheduled",time:"Матч 5"},
-{id:6,a:11,b:12,sa:0,sb:0,status:"scheduled",time:"Матч 6"}
-],scorers:[],keepers:[]};
+
+// Рівно 12 матчів. У кожного матчу є дані для голів та воротаря,
+// тому бомбардири й воротарі будуються без окремого ручного списку.
+const defaultData={
+  matches:[
+    {id:1,a:1,b:2,sa:0,sb:0,status:"scheduled",time:"Матч 1",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:2,a:3,b:4,sa:0,sb:0,status:"scheduled",time:"Матч 2",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:3,a:5,b:6,sa:0,sb:0,status:"scheduled",time:"Матч 3",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:4,a:7,b:8,sa:0,sb:0,status:"scheduled",time:"Матч 4",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:5,a:9,b:10,sa:0,sb:0,status:"scheduled",time:"Матч 5",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:6,a:11,b:12,sa:0,sb:0,status:"scheduled",time:"Матч 6",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:7,a:1,b:3,sa:0,sb:0,status:"scheduled",time:"Матч 7",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:8,a:2,b:4,sa:0,sb:0,status:"scheduled",time:"Матч 8",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:9,a:5,b:7,sa:0,sb:0,status:"scheduled",time:"Матч 9",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:10,a:6,b:8,sa:0,sb:0,status:"scheduled",time:"Матч 10",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:11,a:9,b:11,sa:0,sb:0,status:"scheduled",time:"Матч 11",goalsA:"",goalsB:"",keeperA:"",keeperB:""},
+    {id:12,a:10,b:12,sa:0,sb:0,status:"scheduled",time:"Матч 12",goalsA:"",goalsB:"",keeperA:"",keeperB:""}
+  ]
+};
 
 let data=JSON.parse(localStorage.getItem("itl2026")||"null")||structuredClone(defaultData);
-let remoteLoaded=false;
+let remoteLoaded=false, currentUser=null;
 
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 function setSync(text,online){const el=document.getElementById("sync");el.textContent=text;el.className="sync "+(online?"online":"offline")}
-function tn(id){return teams[id-1]||"—"}
-function openTab(id,b){document.querySelectorAll("main>section").forEach(x=>x.classList.add("hidden"));document.getElementById(id).classList.remove("hidden");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");render()}
-function standings(ids){
-return ids.map(id=>{let r={id,i:0,w:0,d:0,l:0,gf:0,ga:0,p:0};data.matches.filter(m=>m.status==="finished"&&(m.a===id||m.b===id)).forEach(m=>{let a=m.a===id?Number(m.sa):Number(m.sb),b=m.a===id?Number(m.sb):Number(m.sa);r.i++;r.gf+=a;r.ga+=b;if(a>b){r.w++;r.p+=3}else if(a===b){r.d++;r.p++}else r.l++});r.gd=r.gf-r.ga;return r}).sort((a,b)=>b.p-a.p||b.gd-a.gd||b.gf-a.gf)}
-function table(ids,title){let s=standings(ids);return `<div class="card"><h3>${title}</h3><table><tr><th># Команда</th><th>І</th><th>В</th><th>Н</th><th>П</th><th>ЗМ</th><th>ПМ</th><th>РМ</th><th>О</th></tr>${s.map((r,i)=>`<tr><td>${i+1}. ${tn(r.id)}</td><td>${r.i}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd}</td><td><b>${r.p}</b></td></tr>`).join("")}</table></div>`}
-function render(){
-let live=data.matches.filter(m=>m.status==="LIVE");
-document.getElementById("live").innerHTML=`<div class="card"><h2>🔴 LIVE</h2>${live.length?live.map(m=>`<div class="card live"><span class="livebadge">LIVE</span><div class="match"><div class="team">${tn(m.a)}</div><div class="score">${m.sa}:${m.sb}</div><div class="team right">${tn(m.b)}</div></div><div class="muted">${m.time}</div></div>`).join(""):"<p class='muted'>Зараз матчів LIVE немає.</p>"}</div>`;
-document.getElementById("table").innerHTML=table(groups.A,"Група А")+table(groups.B,"Група Б")+table(groups.C,"Група В");
-document.getElementById("matches").innerHTML=`<div class="card"><h2>📅 Матчі</h2>${data.matches.map(m=>`<div class="card"><div class="muted">${m.time} • ${m.status}</div><div class="match"><div class="team">${tn(m.a)}</div><div class="score">${m.sa}:${m.sb}</div><div class="team right">${tn(m.b)}</div></div></div>`).join("")}</div>`;
-document.getElementById("playoff").innerHTML=`<div class="card"><h2>🏆 Плей-оф</h2><p>Місця для сітки плей-оф готові. Після завершення груп їх можна заповнити в Адмін.</p></div>`;
-document.getElementById("scorers").innerHTML=`<div class="card"><h2>🥅 Найкращі бомбардири</h2>${data.scorers.length?'<table><tr><th>#</th><th>Гравець</th><th>Команда</th><th>Голи</th></tr>'+data.scorers.sort((a,b)=>b.g-a.g).map((x,i)=>`<tr><td>${i+1}</td><td>${x.n}</td><td>${tn(x.t)}</td><td>${x.g}</td></tr>`).join("")+'</table>':"<p class='muted'>Поки немає статистики.</p>"}</div>`;
-document.getElementById("keepers").innerHTML=`<div class="card"><h2>🧤 Воротарі</h2><p class="muted">Статистика воротарів з'явиться після внесення даних.</p></div>`;
-document.getElementById("admin").innerHTML=`<div class="card"><h2>⚙️ Адмін</h2><p class="muted">Зміни тут автоматично зберігаються онлайн для всіх глядачів.</p><h3>Матчі</h3>${data.matches.map(m=>`<div class="card"><div class="row"><select onchange="edit(${m.id},'a',+this.value)">${teams.map((x,i)=>`<option value="${i+1}" ${m.a===i+1?"selected":""}>${x}</option>`).join("")}</select><input type="number" min="0" value="${m.sa}" onchange="edit(${m.id},'sa',+this.value)"><b>:</b><input type="number" min="0" value="${m.sb}" onchange="edit(${m.id},'sb',+this.value)"><select onchange="edit(${m.id},'b',+this.value)">${teams.map((x,i)=>`<option value="${i+1}" ${m.b===i+1?"selected":""}>${x}</option>`).join("")}</select></div><div class="row"><select onchange="edit(${m.id},'status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="LIVE" ${m.status==="LIVE"?"selected":""}>LIVE</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option></select><input value="${m.time}" onchange="edit(${m.id},'time',this.value)"></div></div>`).join("")}</div>`;
+function tn(id){return teams[Number(id)-1]||"—"}
+function isAdmin(){return !!currentUser && (ADMIN_UID.startsWith("ВСТАВ_") || currentUser.uid===ADMIN_UID)}
+function openTab(id,b){
+  document.querySelectorAll("main>section").forEach(x=>x.classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+  document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
+  if(b)b.classList.add("active");
+  render();
 }
-
-async function saveOnline(){
-  localStorage.setItem("itl2026",JSON.stringify(data));
-  if(!remoteLoaded) return;
-  try { await set(tournamentRef,data); setSync("● Онлайн синхронізація",true); }
-  catch(e){ console.error(e); setSync("● Помилка синхронізації",false); alert("Не вдалося зберегти онлайн. Перевір Firebase Realtime Database rules."); }
-}
-function edit(id,k,v){let m=data.matches.find(x=>x.id===id);m[k]=v;saveOnline();render()}
-window.openTab = openTab;
-window.edit = edit;
-
-onValue(tournamentRef, async (snapshot)=>{
-  try {
-    if(snapshot.exists()) {
-      data=snapshot.val();
-      data.matches=Array.isArray(data.matches)?data.matches:Object.values(data.matches||{});
-      data.scorers=Array.isArray(data.scorers)?data.scorers:Object.values(data.scorers||{});
-      data.keepers=Array.isArray(data.keepers)?data.keepers:Object.values(data.keepers||{});
-      localStorage.setItem("itl2026",JSON.stringify(data));
-    } else {
-      await set(tournamentRef,defaultData);
-      data=structuredClone(defaultData);
-    }
-    remoteLoaded=true;
-    setSync("● Онлайн синхронізація увімкнена",true);
-    render();
-  } catch(e){
-    console.error(e); setSync("● Firebase не підключено",false); render();
+function normalize(){
+  data.matches=Array.isArray(data.matches)?data.matches:Object.values(data.matches||{});
+  data.matches.sort((a,b)=>Number(a.id)-Number(b.id));
+  while(data.matches.length<12){
+    const n=data.matches.length+1;
+    data.matches.push({id:n,a:1,b:2,sa:0,sb:0,status:"scheduled",time:`Матч ${n}`,goalsA:"",goalsB:"",keeperA:"",keeperB:""});
   }
-},(error)=>{console.error(error);setSync("● Помилка Firebase",false);render()});
+  data.matches=data.matches.slice(0,12).map(m=>({...{sa:0,sb:0,status:"scheduled",time:`Матч ${m.id}`,goalsA:"",goalsB:"",keeperA:"",keeperB:""},...m}));
+}
+function standings(ids){
+ return ids.map(id=>{
+  let r={id,i:0,w:0,d:0,l:0,gf:0,ga:0,p:0};
+  data.matches.filter(m=>m.status==="finished"&&(Number(m.a)===id||Number(m.b)===id)).forEach(m=>{
+   let a=Number(m.a)===id?Number(m.sa):Number(m.sb), b=Number(m.a)===id?Number(m.sb):Number(m.sa);
+   r.i++;r.gf+=a;r.ga+=b;
+   if(a>b){r.w++;r.p+=3}else if(a===b){r.d++;r.p++}else r.l++;
+  });
+  r.gd=r.gf-r.ga;return r
+ }).sort((a,b)=>b.p-a.p||b.gd-a.gd||b.gf-a.gf||tn(a.id).localeCompare(tn(b.id),"uk"));
+}
+function table(ids,title){
+ let s=standings(ids);
+ return `<div class="card"><h3>${title}</h3><table><tr><th># Команда</th><th>І</th><th>В</th><th>Н</th><th>П</th><th>ЗМ</th><th>ПМ</th><th>РМ</th><th>О</th></tr>
+ ${s.map((r,i)=>`<tr><td>${i+1}. ${esc(tn(r.id))}</td><td>${r.i}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd}</td><td><b>${r.p}</b></td></tr>`).join("")}</table></div>`
+}
+function parseGoals(text){
+ const out=[];
+ String(text||"").split(",").map(x=>x.trim()).filter(Boolean).forEach(item=>{
+   const m=item.match(/^(.+?)(?:\s*[:xх*]\s*|\s+)(\d+)$/i);
+   if(m) out.push({n:m[1].trim(),g:Number(m[2])});
+   else out.push({n:item,g:1});
+ });
+ return out;
+}
+function scorerStats(){
+ const map={};
+ data.matches.filter(m=>m.status!=="canceled").forEach(m=>{
+  [[m.goalsA,m.a],[m.goalsB,m.b]].forEach(([txt,t])=>parseGoals(txt).forEach(x=>{
+   const key=`${t}|${x.n.toLowerCase()}`;
+   if(!map[key])map[key]={n:x.n,t:Number(t),g:0};
+   map[key].g+=x.g;
+  }));
+ });
+ return Object.values(map).sort((a,b)=>b.g-a.g||a.n.localeCompare(b.n,"uk"));
+}
+function keeperStats(){
+ const map={};
+ data.matches.filter(m=>m.status==="finished").forEach(m=>{
+  [[m.keeperA,m.a,Number(m.sb)],[m.keeperB,m.b,Number(m.sa)]].forEach(([name,t,conceded])=>{
+   const n=String(name||"").trim(); if(!n)return;
+   const key=`${t}|${n.toLowerCase()}`;
+   if(!map[key])map[key]={n,t:Number(t),games:0,ga:0,cs:0};
+   map[key].games++;map[key].ga+=conceded;if(conceded===0)map[key].cs++;
+  });
+ });
+ return Object.values(map).sort((a,b)=>a.ga-b.ga||b.cs-a.cs||b.games-a.games);
+}
+function render(){
+ normalize();
+ const live=data.matches.filter(m=>m.status==="LIVE");
+ document.getElementById("live").innerHTML=`<div class="card"><h2>🔴 LIVE</h2>${live.length?live.map(m=>matchCard(m,true)).join(""):"<p class='muted'>Зараз матчів LIVE немає.</p>"}</div>`;
+ document.getElementById("table").innerHTML=table(groups.A,"Група А")+table(groups.B,"Група Б")+table(groups.C,"Група В");
+ document.getElementById("matches").innerHTML=`<div class="card"><h2>📅 12 матчів</h2>${data.matches.map(m=>matchCard(m,false)).join("")}</div>`;
+ document.getElementById("playoff").innerHTML=`<div class="card"><h2>🏆 Плей-оф</h2><p class="muted">Сітку плей-оф можна заповнити після завершення груп.</p></div>`;
+ const sc=scorerStats();
+ document.getElementById("scorers").innerHTML=`<div class="card"><h2>🥅 Бомбардири</h2>${sc.length?`<table><tr><th>#</th><th>Гравець</th><th>Команда</th><th>Голи</th></tr>${sc.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.n)}</td><td>${esc(tn(x.t))}</td><td><b>${x.g}</b></td></tr>`).join("")}</table>`:"<p class='muted'>Після внесення голів статистика з'явиться автоматично.</p>"}</div>`;
+ const ks=keeperStats();
+ document.getElementById("keepers").innerHTML=`<div class="card"><h2>🧤 Воротарі</h2>${ks.length?`<table><tr><th>#</th><th>Воротар</th><th>Команда</th><th>І</th><th>ПМ</th><th>Сухі</th></tr>${ks.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.n)}</td><td>${esc(tn(x.t))}</td><td>${x.games}</td><td>${x.ga}</td><td>${x.cs}</td></tr>`).join("")}</table>`:"<p class='muted'>Після внесення воротарів у матчах статистика з'явиться автоматично.</p>"}</div>`;
+ renderAdmin();
+}
+function matchCard(m,live){
+ return `<div class="card ${live?"live":""}">
+  ${live?'<span class="livebadge">LIVE</span>':''}
+  <div class="muted">${esc(m.time)} • ${esc(m.status==="finished"?"Завершений":m.status==="canceled"?"Скасований":m.status==="LIVE"?"LIVE":"Запланований")}</div>
+  <div class="match"><div class="team">${esc(tn(m.a))}</div><div class="score">${Number(m.sa)}:${Number(m.sb)}</div><div class="team right">${esc(tn(m.b))}</div></div>
+ </div>`;
+}
+function renderAdmin(){
+ const el=document.getElementById("admin");
+ if(!isAdmin()){
+  el.innerHTML=`<div class="card"><h2>⚙️ Адмін</h2><p class="muted">Редагування доступне тільки адміністратору.</p>
+   <div class="row"><input id="loginEmail" type="email" placeholder="Email"><input id="loginPass" type="password" placeholder="Пароль"></div>
+   <button class="action" onclick="login()">Увійти</button><div id="loginMsg" class="muted"></div></div>`;
+  return;
+ }
+ el.innerHTML=`<div class="card"><h2>⚙️ Адмін</h2><p class="muted">Ви увійшли як ${esc(currentUser.email||"адміністратор")}.</p><button class="action" onclick="logout()">Вийти</button></div>
+ ${data.matches.map(m=>adminMatch(m)).join("")}`;
+}
+function adminMatch(m){
+ const opts=teams.map((x,i)=>`<option value="${i+1}" ${Number(m.a)===i+1?"selected":""}>${esc(x)}</option>`).join("");
+ const optsB=teams.map((x,i)=>`<option value="${i+1}" ${Number(m.b)===i+1?"selected":""}>${esc(x)}</option>`).join("");
+ return `<div class="card"><h3>Матч ${m.id}</h3>
+  <div class="row"><select onchange="edit(${m.id},'a',+this.value)">${opts}</select><input type="number" min="0" value="${Number(m.sa)}" onchange="edit(${m.id},'sa',+this.value)"><b>:</b><input type="number" min="0" value="${Number(m.sb)}" onchange="edit(${m.id},'sb',+this.value)"><select onchange="edit(${m.id},'b',+this.value)">${optsB}</select></div>
+  <div class="row"><select onchange="edit(${m.id},'status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="LIVE" ${m.status==="LIVE"?"selected":""}>LIVE</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option><option value="canceled" ${m.status==="canceled"?"selected":""}>Скасований</option></select><input value="${esc(m.time)}" placeholder="Час/опис" onchange="edit(${m.id},'time',this.value)"></div>
+  <div class="row"><input value="${esc(m.goalsA)}" placeholder="Голи ${esc(tn(m.a))} напр. Іван:2, Петро:1" onchange="edit(${m.id},'goalsA',this.value)"><input value="${esc(m.goalsB)}" placeholder="Голи ${esc(tn(m.b))} напр. Сидор:1" onchange="edit(${m.id},'goalsB',this.value)"></div>
+  <div class="row"><input value="${esc(m.keeperA)}" placeholder="Воротар ${esc(tn(m.a))}" onchange="edit(${m.id},'keeperA',this.value)"><input value="${esc(m.keeperB)}" placeholder="Воротар ${esc(tn(m.b))}" onchange="edit(${m.id},'keeperB',this.value)"></div>
+ </div>`;
+}
+async function saveOnline(){
+ localStorage.setItem("itl2026",JSON.stringify(data));
+ if(!remoteLoaded||!isAdmin())return;
+ try{await set(tournamentRef,data);setSync("● Онлайн синхронізація",true)}
+ catch(e){console.error(e);setSync("● Помилка синхронізації",false);alert("Не вдалося зберегти. Перевір Firebase Rules.");}
+}
+async function edit(id,k,v){
+ if(!isAdmin()){alert("Доступ заборонений.");return}
+ const m=data.matches.find(x=>Number(x.id)===Number(id)); if(!m)return;
+ m[k]=v;
+ if(["sa","sb"].includes(k)&&Number(v)<0)m[k]=0;
+ await saveOnline();render();
+}
+async function login(){
+ const email=document.getElementById("loginEmail")?.value.trim(), pass=document.getElementById("loginPass")?.value;
+ const msg=document.getElementById("loginMsg");
+ try{
+  const cred=await signInWithEmailAndPassword(auth,email,pass);
+  if(ADMIN_UID.startsWith("ВСТАВ_")||cred.user.uid===ADMIN_UID){
+   currentUser=cred.user;render();setSync("● Ви увійшли як адміністратор",true);
+  }else{await signOut(auth);if(msg)msg.textContent="Цей акаунт не має прав адміністратора."}
+ }catch(e){if(msg)msg.textContent="Помилка входу: перевір email і пароль."}
+}
+async function logout(){await signOut(auth);currentUser=null;render();}
+window.openTab=openTab;window.edit=edit;window.login=login;window.logout=logout;
 
-render();
+onAuthStateChanged(auth,user=>{
+ currentUser=user;
+ renderAdmin();
+ if(user)setSync(isAdmin()?"● Адмін авторизований":"● Авторизовано",true);
+});
+onValue(tournamentRef,snapshot=>{
+ try{
+  if(snapshot.exists()){data=snapshot.val();normalize();localStorage.setItem("itl2026",JSON.stringify(data))}
+  else{data=structuredClone(defaultData);normalize();if(isAdmin())set(tournamentRef,data)}
+  remoteLoaded=true;setSync("● Онлайн синхронізація увімкнена",true);render();
+ }catch(e){console.error(e);setSync("● Firebase: помилка даних",false);render();}
+},error=>{console.error(error);setSync("● Помилка Firebase",false);render()});
+normalize();render();
 </script>
 </body>
 </html>
