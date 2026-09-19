@@ -17,12 +17,12 @@ main{max-width:950px;margin:auto;padding:12px}.card{background:white;border-radi
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:8px 4px;border-bottom:1px solid #ddd;text-align:center}th:first-child,td:first-child{text-align:left}
 input,select{padding:8px;border:1px solid #ccc;border-radius:7px;width:100%;box-sizing:border-box}.row{display:flex;gap:7px;margin:7px 0}.row>*{flex:1}
 button.action{background:#101827;color:white;border:0;padding:9px 12px;border-radius:8px;font-weight:bold}
-.hidden{display:none}.muted{color:#6b7280;font-size:13px}
+.hidden{display:none}.muted{color:#6b7280;font-size:13px}.sync{font-size:12px;margin-top:6px}.online{color:#86efac}.offline{color:#fca5a5}
 @media(max-width:600px){.score{font-size:24px}.team{width:31%}}
 </style>
 </head>
 <body>
-<header><h1>🏆 ІТ Коледж Львів 2026</h1><div class="sub">🔴 LIVE турнір</div></header>
+<header><h1>🏆 ІТ Коледж Львів 2026</h1><div class="sub">🔴 LIVE турнір</div><div id="sync" class="sync">Підключення…</div></header>
 <nav>
 <button class="active" onclick="openTab('live',this)">🔴 LIVE</button>
 <button onclick="openTab('table',this)">📊 Таблиця</button>
@@ -37,25 +37,44 @@ button.action{background:#101827;color:white;border:0;padding:9px 12px;border-ra
 <section id="playoff" class="hidden"></section><section id="scorers" class="hidden"></section>
 <section id="keepers" class="hidden"></section><section id="admin" class="hidden"></section>
 </main>
-<script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB2i-s7DtWnLj1izs9RHOjv6lwl3bpzoNo",
+  authDomain: "it-college-lviv-2026.firebaseapp.com",
+  databaseURL: "https://it-college-lviv-2026-default-rtdb.firebaseio.com",
+  projectId: "it-college-lviv-2026",
+  storageBucket: "it-college-lviv-2026.firebasestorage.app",
+  messagingSenderId: "742260821532",
+  appId: "1:742260821532:web:632463dde333b49cdad9d9"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const tournamentRef = ref(db, "tournament");
+
 const teams=["ІП 12","ІП 21","ІП 22","МТ 11","МТ 12","МТ 21","МТ 22","КІ 11","КІ 12","КІ 13","ТК 12","КН 11"];
 const groups={A:[1,2,3,4],B:[5,6,7,8],C:[9,10,11,12]};
-let data=JSON.parse(localStorage.getItem("itl2026")||"null")||{
-matches:[
+const defaultData={matches:[
 {id:1,a:1,b:2,sa:0,sb:0,status:"LIVE",time:"Матч 1"},
 {id:2,a:3,b:4,sa:0,sb:0,status:"scheduled",time:"Матч 2"},
 {id:3,a:5,b:6,sa:0,sb:0,status:"scheduled",time:"Матч 3"},
 {id:4,a:7,b:8,sa:0,sb:0,status:"scheduled",time:"Матч 4"},
 {id:5,a:9,b:10,sa:0,sb:0,status:"scheduled",time:"Матч 5"},
 {id:6,a:11,b:12,sa:0,sb:0,status:"scheduled",time:"Матч 6"}
-],
-scorers:[],keepers:[]
-};
-function save(){localStorage.setItem("itl2026",JSON.stringify(data));render()}
-function tn(id){return teams[id-1]}
+],scorers:[],keepers:[]};
+
+let data=JSON.parse(localStorage.getItem("itl2026")||"null")||structuredClone(defaultData);
+let remoteLoaded=false;
+
+function setSync(text,online){const el=document.getElementById("sync");el.textContent=text;el.className="sync "+(online?"online":"offline")}
+function tn(id){return teams[id-1]||"—"}
 function openTab(id,b){document.querySelectorAll("main>section").forEach(x=>x.classList.add("hidden"));document.getElementById(id).classList.remove("hidden");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");render()}
 function standings(ids){
-return ids.map(id=>{let r={id,i:0,w:0,d:0,l:0,gf:0,ga:0,p:0};data.matches.filter(m=>m.status==="finished"&&(m.a===id||m.b===id)).forEach(m=>{let a=m.a===id?m.sa:m.sb,b=m.a===id?m.sb:m.sa;r.i++;r.gf+=a;r.ga+=b;if(a>b){r.w++;r.p+=3}else if(a===b){r.d++;r.p++}else r.l++});r.gd=r.gf-r.ga;return r}).sort((a,b)=>b.p-a.p||b.gd-a.gd||b.gf-a.gf)}
+return ids.map(id=>{let r={id,i:0,w:0,d:0,l:0,gf:0,ga:0,p:0};data.matches.filter(m=>m.status==="finished"&&(m.a===id||m.b===id)).forEach(m=>{let a=m.a===id?Number(m.sa):Number(m.sb),b=m.a===id?Number(m.sb):Number(m.sa);r.i++;r.gf+=a;r.ga+=b;if(a>b){r.w++;r.p+=3}else if(a===b){r.d++;r.p++}else r.l++});r.gd=r.gf-r.ga;return r}).sort((a,b)=>b.p-a.p||b.gd-a.gd||b.gf-a.gf)}
 function table(ids,title){let s=standings(ids);return `<div class="card"><h3>${title}</h3><table><tr><th># Команда</th><th>І</th><th>В</th><th>Н</th><th>П</th><th>ЗМ</th><th>ПМ</th><th>РМ</th><th>О</th></tr>${s.map((r,i)=>`<tr><td>${i+1}. ${tn(r.id)}</td><td>${r.i}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd}</td><td><b>${r.p}</b></td></tr>`).join("")}</table></div>`}
 function render(){
 let live=data.matches.filter(m=>m.status==="LIVE");
@@ -65,9 +84,37 @@ document.getElementById("matches").innerHTML=`<div class="card"><h2>📅 Мат�
 document.getElementById("playoff").innerHTML=`<div class="card"><h2>🏆 Плей-оф</h2><p>Місця для сітки плей-оф готові. Після завершення груп їх можна заповнити в Адмін.</p></div>`;
 document.getElementById("scorers").innerHTML=`<div class="card"><h2>🥅 Найкращі бомбардири</h2>${data.scorers.length?'<table><tr><th>#</th><th>Гравець</th><th>Команда</th><th>Голи</th></tr>'+data.scorers.sort((a,b)=>b.g-a.g).map((x,i)=>`<tr><td>${i+1}</td><td>${x.n}</td><td>${tn(x.t)}</td><td>${x.g}</td></tr>`).join("")+'</table>':"<p class='muted'>Поки немає статистики.</p>"}</div>`;
 document.getElementById("keepers").innerHTML=`<div class="card"><h2>🧤 Воротарі</h2><p class="muted">Статистика воротарів з'явиться після внесення даних.</p></div>`;
-document.getElementById("admin").innerHTML=`<div class="card"><h2>⚙️ Адмін</h2><p class="muted">Змінюй рахунок тут. Дані зберігаються у браузері.</p><h3>Матчі</h3>${data.matches.map(m=>`<div class="card"><div class="row"><select onchange="edit(${m.id},'a',+this.value)">${teams.map((x,i)=>`<option value="${i+1}" ${m.a===i+1?"selected":""}>${x}</option>`).join("")}</select><input type="number" value="${m.sa}" onchange="edit(${m.id},'sa',+this.value)"><b>:</b><input type="number" value="${m.sb}" onchange="edit(${m.id},'sb',+this.value)"><select onchange="edit(${m.id},'b',+this.value)">${teams.map((x,i)=>`<option value="${i+1}" ${m.b===i+1?"selected":""}>${x}</option>`).join("")}</select></div><div class="row"><select onchange="edit(${m.id},'status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="LIVE" ${m.status==="LIVE"?"selected":""}>LIVE</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option></select><input value="${m.time}" onchange="edit(${m.id},'time',this.value)"></div></div>`).join("")}</div>`;
+document.getElementById("admin").innerHTML=`<div class="card"><h2>⚙️ Адмін</h2><p class="muted">Зміни тут автоматично зберігаються онлайн для всіх глядачів.</p><h3>Матчі</h3>${data.matches.map(m=>`<div class="card"><div class="row"><select onchange="edit(${m.id},'a',+this.value)">${teams.map((x,i)=>`<option value="${i+1}" ${m.a===i+1?"selected":""}>${x}</option>`).join("")}</select><input type="number" min="0" value="${m.sa}" onchange="edit(${m.id},'sa',+this.value)"><b>:</b><input type="number" min="0" value="${m.sb}" onchange="edit(${m.id},'sb',+this.value)"><select onchange="edit(${m.id},'b',+this.value)">${teams.map((x,i)=>`<option value="${i+1}" ${m.b===i+1?"selected":""}>${x}</option>`).join("")}</select></div><div class="row"><select onchange="edit(${m.id},'status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="LIVE" ${m.status==="LIVE"?"selected":""}>LIVE</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option></select><input value="${m.time}" onchange="edit(${m.id},'time',this.value)"></div></div>`).join("")}</div>`;
 }
-function edit(id,k,v){let m=data.matches.find(x=>x.id===id);m[k]=v;save()}
+
+async function saveOnline(){
+  localStorage.setItem("itl2026",JSON.stringify(data));
+  if(!remoteLoaded) return;
+  try { await set(tournamentRef,data); setSync("● Онлайн синхронізація",true); }
+  catch(e){ console.error(e); setSync("● Помилка синхронізації",false); alert("Не вдалося зберегти онлайн. Перевір Firebase Realtime Database rules."); }
+}
+function edit(id,k,v){let m=data.matches.find(x=>x.id===id);m[k]=v;saveOnline();render()}
+
+onValue(tournamentRef, async (snapshot)=>{
+  try {
+    if(snapshot.exists()) {
+      data=snapshot.val();
+      data.matches=Array.isArray(data.matches)?data.matches:Object.values(data.matches||{});
+      data.scorers=Array.isArray(data.scorers)?data.scorers:Object.values(data.scorers||{});
+      data.keepers=Array.isArray(data.keepers)?data.keepers:Object.values(data.keepers||{});
+      localStorage.setItem("itl2026",JSON.stringify(data));
+    } else {
+      await set(tournamentRef,defaultData);
+      data=structuredClone(defaultData);
+    }
+    remoteLoaded=true;
+    setSync("● Онлайн синхронізація увімкнена",true);
+    render();
+  } catch(e){
+    console.error(e); setSync("● Firebase не підключено",false); render();
+  }
+},(error)=>{console.error(error);setSync("● Помилка Firebase",false);render()});
+
 render();
 </script>
 </body>
