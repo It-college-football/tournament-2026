@@ -296,8 +296,7 @@ function buildGroupMatches(groups){
 }
 async function saveGroups(){
  if(!isAdmin())return;
- const parseGroup=id=>String(document.getElementById(id)?.value||"").split(/
-|,/).map(x=>x.trim()).filter(Boolean);
+ const parseGroup=id=>String(document.getElementById(id)?.value||"").split(/\n|,/).map(x=>x.trim()).filter(Boolean);
  const raw=[parseGroup("gA"),parseGroup("gB"),parseGroup("gC")];
  if(raw.some(g=>g.length<2)){alert("У кожній групі має бути щонайменше 2 команди.");return}
  const names=[];
