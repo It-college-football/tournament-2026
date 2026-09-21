@@ -60,7 +60,7 @@ const firebaseConfig={
 const ADMIN_UID="ZBOzMFg4IcMsxbKsk8KV7oixwnF3";
 const app=initializeApp(firebaseConfig),db=getDatabase(app),auth=getAuth(app),tournamentRef=ref(db,"tournament");
 
-const teams=["ІП 12","ІП 21","ІП 22","МТ 11","МТ 12","МТ 21","МТ 22","КІ 11","КІ 12","КІ 13","ТК 12","КН 11"];
+let teams=["ІП 12","ІП 21","ІП 22","МТ 11","МТ 12","МТ 21","МТ 22","КІ 11","КІ 12","КІ 13","ТК 12","КН 11"];
 const defaultGroups={A:[7,2,10,3],B:[4,11,5,6],C:[9,12,8,1]};
 const refereeInfo=[
  ["Арбітр","Руслан Городняк"],
@@ -88,7 +88,7 @@ let data=JSON.parse(localStorage.getItem("itl2026")||"null")||structuredClone(de
 let remoteLoaded=false,currentUser=null;
 
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
-const tn=id=>teams[Number(id)-1]||"—";
+const tn=id=>(data.teamNames||teams)[Number(id)-1]||"—";
 function setSync(text,online){const e=document.getElementById("sync");e.textContent=text;e.className="sync "+(online?"online":"offline")}
 function isAdmin(){return !!currentUser&&currentUser.uid===ADMIN_UID}
 
@@ -107,6 +107,8 @@ function openTab(id,b){
 }
 
 function normalize(){
+ if(!Array.isArray(data.teamNames)||!data.teamNames.length)data.teamNames=[...teams];
+ teams=[...data.teamNames];
  data.matches=Array.isArray(data.matches)?data.matches:Object.values(data.matches||{});
  data.matches.sort((a,b)=>Number(a.id)-Number(b.id));
  const existing=data.matches.map(m=>Number(m.id));
@@ -232,13 +234,15 @@ function matchCard(m,live){
  return `<div class="card ${live?"live":""}">${live?'<span class="livebadge">LIVE</span>':''}<div><b>Матч ${Number(m.id)} • Група ${esc(g)}</b></div><div class="muted">${esc(m.time||"Час не вказано")} • ${status}</div><div class="match"><div class="team">${esc(tn(m.a))}</div><div class="score">${Number(m.sa)}:${Number(m.sb)}</div><div class="team right">${esc(tn(m.b))}</div></div></div>`;
 }
 function renderGroupEditor(){
- const names=ids=>(ids||[]).map(id=>tn(id)).join("\n");
+ const names=ids=>(ids||[]).map(id=>tn(id)).join("
+");
  return `<div class="card"><h3>👥 Зміна груп</h3>
- <p class="muted">Вводь команди по одній у кожному полі. У групі може бути більше 4 команд. Кожна команда має бути лише в одній групі.</p>
- <div class="row"><textarea id="gA" rows="7" placeholder="Група A">${esc(names(data.groups.A))}</textarea>
- <textarea id="gB" rows="7" placeholder="Група B">${esc(names(data.groups.B))}</textarea>
- <textarea id="gC" rows="7" placeholder="Група C">${esc(names(data.groups.C))}</textarea></div>
- <button class="action" onclick="saveGroups()">💾 Зберегти групи</button></div>`;
+ <p class="muted">Тут можна вільно написати будь-яку кількість команд — по одній у рядку. Нові назви команд теж можна додавати.</p>
+ <p class="muted"><b>Для формату 22 матчі:</b> Група A — 4 команди, Група B — 4, Група C — 5. Система автоматично створить 6 + 6 + 10 = <b>22 матчі</b>.</p>
+ <div class="row"><textarea id="gA" rows="8" placeholder="Група A — по одній команді в рядку">${esc(names(data.groups.A))}</textarea>
+ <textarea id="gB" rows="8" placeholder="Група B — по одній команді в рядку">${esc(names(data.groups.B))}</textarea>
+ <textarea id="gC" rows="8" placeholder="Група C — 5 команд, по одній у рядку">${esc(names(data.groups.C))}</textarea></div>
+ <button class="action" onclick="saveGroups()">💾 Зберегти групи та автоматично створити матчі</button></div>`;
 }
 function renderAdmin(){
  const el=document.getElementById("admin");
@@ -272,18 +276,37 @@ async function deleteMatch(id){
  if(!isAdmin()||Number(id)<=21)return;if(!confirm("Видалити цей додатковий матч?"))return;
  data.matches=data.matches.filter(m=>Number(m.id)!==Number(id));await saveOnline();render();
 }
+function buildGroupMatches(groups){
+ const oldByPair=new Map();
+ (data.matches||[]).forEach(m=>{
+  const a=Number(m.a),b=Number(m.b),g=String(m.group||"").toUpperCase();
+  if(a&&b&&g){const key=[g,Math.min(a,b),Math.max(a,b)].join("|");if(!oldByPair.has(key))oldByPair.set(key,m);}
+ });
+ const out=[]; let id=1;
+ for(const [group,ids] of Object.entries(groups)){
+  for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
+   const a=Number(ids[i]),b=Number(ids[j]);
+   const old=oldByPair.get([group,a,b].join("|"));
+   const m=makeMatch(id++,a,b,old?.time||"",group);
+   if(old)Object.assign(m,{sa:Number(old.sa)||0,sb:Number(old.sb)||0,status:old.status||"scheduled",goalsA:old.goalsA||"",goalsB:old.goalsB||"",keeperA:old.keeperA||"",keeperB:old.keeperB||""});
+   out.push(m);
+  }
+ }
+ return out;
+}
 async function saveGroups(){
  if(!isAdmin())return;
- const parseGroup=id=>String(document.getElementById(id)?.value||"").split(/\\n|,/).map(x=>x.trim()).filter(Boolean);
- const resolve=list=>list.map(name=>teams.findIndex(t=>t.toLowerCase()===name.toLowerCase())+1);
- const A=resolve(parseGroup("gA")),B=resolve(parseGroup("gB")),C=resolve(parseGroup("gC"));
- if([A,B,C].some(g=>g.some(id=>id<1))){alert("Перевір назви команд. Використовуй назви зі списку команд.");return}
- const all=[...A,...B,...C];
- if(new Set(all).size!==all.length){alert("Одна команда не може бути у двох групах.");return}
- if(all.length!==teams.length){alert("Усі 12 команд повинні бути розподілені між групами.");return}
- if(A.length<2||B.length<2||C.length<2){alert("У кожній групі має бути щонайменше 2 команди.");return}
- data.groups={A,B,C};
- await saveOnline();render();alert("Групи збережено.");
+ const parseGroup=id=>String(document.getElementById(id)?.value||"").split(/
+|,/).map(x=>x.trim()).filter(Boolean);
+ const raw=[parseGroup("gA"),parseGroup("gB"),parseGroup("gC")];
+ if(raw.some(g=>g.length<2)){alert("У кожній групі має бути щонайменше 2 команди.");return}
+ const names=[];
+ const findOrAdd=name=>{const key=name.trim().toLowerCase();const idx=names.findIndex(x=>x.toLowerCase()===key);if(idx>=0)return idx+1;names.push(name.trim());return names.length;};
+ const A=raw[0].map(findOrAdd),B=raw[1].map(findOrAdd),C=raw[2].map(findOrAdd);
+ if(names.length!==13 || A.length!==4 || B.length!==4 || C.length!==5){alert(`Для 22 матчів потрібно саме 13 команд: 4 у Групі A, 4 у Групі B і 5 у Групі C. Зараз: A=${A.length}, B=${B.length}, C=${C.length}, разом=${names.length}.`);return}
+ if(!confirm("Створити заново 22 матчі групового етапу? Рахунки вже існуючих пар будуть збережені, якщо пара не змінилася."))return;
+ data.teamNames=names;teams=[...names];data.groups={A,B,C};data.matches=buildGroupMatches(data.groups);data.playoff=null;
+ await saveOnline();render();alert("Готово: 22 матчі — A: 6, B: 6, C: 10.");
 }
 async function editPlayoff(id,k,v){
  if(!isAdmin())return;if(!data.playoff)data.playoff={};if(!data.playoff[id])data.playoff[id]={};
