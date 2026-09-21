@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IT College Football Tournament 2026 — LIVE</title>
+<style>
+body{margin:0;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827}
+header{background:#101827;color:white;padding:18px;text-align:center}
+h1{margin:0;font-size:23px}.sub{margin-top:5px;color:#aab3c2}
+nav{display:flex;overflow:auto;background:white;padding:8px;gap:7px;position:sticky;top:0;z-index:5}
+nav button{border:0;border-radius:9px;padding:10px 13px;font-weight:bold;white-space:nowrap}
+nav button.active{background:#101827;color:white}
+main{max-width:950px;margin:auto;padding:12px}.card{background:white;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 2px 8px #00000012}
+.live{border-left:5px solid #e53935}.livebadge{background:#e53935;color:white;padding:4px 7px;border-radius:5px;font-size:11px;font-weight:bold}
+.match{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:13px 0}.team{width:36%;font-weight:bold}.right{text-align:right}.score{font-size:30px;font-weight:900}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:8px 4px;border-bottom:1px solid #ddd;text-align:center}th:first-child,td:first-child{text-align:left}
+input,select{padding:8px;border:1px solid #ccc;border-radius:7px;width:100%;box-sizing:border-box}.row{display:flex;gap:7px;margin:7px 0}.row>*{flex:1}
+button.action{background:#101827;color:white;border:0;padding:9px 12px;border-radius:8px;font-weight:bold}
+button.danger{background:#b91c1c;color:white;border:0;padding:9px 12px;border-radius:8px;font-weight:bold}
+.hidden{display:none}.muted{color:#6b7280;font-size:13px}.sync{font-size:12px;margin-top:6px}.online{color:#86efac}.offline{color:#fca5a5}
+.badge{display:inline-block;padding:4px 7px;border-radius:6px;background:#eef2ff;margin:2px;font-size:12px}
+.bracket{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:center}
+.bracket .card{margin:0}.bracket h4{margin:0 0 8px}
+@media(max-width:600px){.score{font-size:24px}.team{width:31%}.bracket{grid-template-columns:1fr}.row{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<header><h1>🏆 IT College Football Tournament 2026</h1><div class="sub">🔴 LIVE турнір</div><div id="sync" class="sync">Підключення…</div></header>
+<nav>
+<button class="active" onclick="openTab('live',this)">🔴 LIVE</button>
+<button onclick="openTab('table',this)">📊 Таблиця</button>
+<button onclick="openTab('matches',this)">📅 Матчі</button>
+<button onclick="openTab('playoff',this)">🏆 Плей-оф</button>
+<button onclick="openTab('scorers',this)">🥅 Бомбардири</button>
+<button onclick="openTab('keepers',this)">🧤 Воротарі</button>
+<button onclick="openTab('referees',this)">👨‍⚖️ Суддівська бригада</button>
+<button onclick="openTab('admin',this)">⚙️ Адмін</button>
+</nav>
+<main>
+<section id="live"></section><section id="table" class="hidden"></section><section id="matches" class="hidden"></section>
+<section id="playoff" class="hidden"></section><section id="scorers" class="hidden"></section>
+<section id="keepers" class="hidden"></section><section id="referees" class="hidden"></section><section id="admin" class="hidden"></section>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+
+const firebaseConfig={
+ apiKey:"AIzaSyB2i-s7DtWnLj1izs9RHOjv6lwl3bpzoNo",
+ authDomain:"it-college-lviv-2026.firebaseapp.com",
+ databaseURL:"https://it-college-lviv-2026-default-rtdb.firebaseio.com",
+ projectId:"it-college-lviv-2026",
+ storageBucket:"it-college-lviv-2026.firebasestorage.app",
+ messagingSenderId:"742260821532",
+ appId:"1:742260821532:web:632463dde333b49cdad9d9"
+};
+const ADMIN_UID="ZBOzMFg4IcMsxbKsk8KV7oixwnF3";
+const app=initializeApp(firebaseConfig),db=getDatabase(app),auth=getAuth(app),tournamentRef=ref(db,"tournament");
+
+let teams=["ІП 12","ІП 21","ІП 22","МТ 11","МТ 12","МТ 21","МТ 22","КІ 11","КІ 12","КІ 13","ТК 12","КН 11"];
+const defaultGroups={A:[7,2,10,3],B:[4,11,5,6],C:[9,12,8,1]};
+const refereeInfo=[
+ ["Арбітр","Руслан Городняк"],
+ ["Асистент арбітра","С. Садовий"],
+ ["Асистент арбітра","Л. Галась"],
+ ["Четвертий арбітр","В. Литвин"],
+ ["Арбітр ВАА","Руслан Городняк Миколайович"]
+];
+
+const makeMatch=(id,a,b,time="",group="")=>({id,a,b,group,sa:0,sb:0,status:"scheduled",time,goalsA:"",goalsB:"",keeperA:"",keeperB:""});
+const defaultMatches=[
+ makeMatch(1,7,2,"13:20","A"),makeMatch(2,10,3,"13:35","A"),
+ makeMatch(3,7,10,"13:50","A"),makeMatch(4,2,7,"14:05","A"),
+ makeMatch(5,7,3,"14:20","A"),makeMatch(6,2,10,"14:35","A"),
+ makeMatch(7,4,11,"14:50","B"),makeMatch(8,5,6,"15:05","B"),
+ makeMatch(9,4,5,"15:20","B"),makeMatch(10,11,6,"15:35","B"),
+ makeMatch(11,4,6,"15:50","B"),makeMatch(12,11,5,"16:05","B"),
+ makeMatch(13,9,12,"16:20","C"),makeMatch(14,8,1,"16:35","C"),
+ makeMatch(15,9,8,"16:50","C"),makeMatch(16,12,1,"17:05","C"),
+ makeMatch(17,9,1,"17:20","C"),makeMatch(18,8,12,"17:35","C")
+];
+
+const defaultData={matches:defaultMatches,groups:defaultGroups,playoff:null};
+let data=JSON.parse(localStorage.getItem("itl2026")||"null")||structuredClone(defaultData);
+let remoteLoaded=false,currentUser=null;
+
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+const tn=id=>(data.teamNames||teams)[Number(id)-1]||"—";
+function setSync(text,online){const e=document.getElementById("sync");e.textContent=text;e.className="sync "+(online?"online":"offline")}
+function isAdmin(){return !!currentUser&&currentUser.uid===ADMIN_UID}
+
+function matchGroup(m){
+ const g=String(m.group||"").toUpperCase();
+ if(["A","B","C"].includes(g))return g;
+ for(const [name,ids] of Object.entries(data.groups||{}))if(ids.map(Number).includes(Number(m.a))&&ids.map(Number).includes(Number(m.b)))return name;
+ return "—";
+}
+
+function openTab(id,b){
+ document.querySelectorAll("main>section").forEach(x=>x.classList.add("hidden"));
+ document.getElementById(id).classList.remove("hidden");
+ document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
+ if(b)b.classList.add("active");render();
+}
+
+function normalize(){
+ if(!Array.isArray(data.teamNames)||!data.teamNames.length)data.teamNames=[...teams];
+ teams=[...data.teamNames];
+ data.matches=Array.isArray(data.matches)?data.matches:Object.values(data.matches||{});
+ data.matches.sort((a,b)=>Number(a.id)-Number(b.id));
+ const existing=data.matches.map(m=>Number(m.id));
+ defaultMatches.forEach(dm=>{if(!existing.includes(dm.id))data.matches.push(structuredClone(dm))});
+ data.matches.sort((a,b)=>Number(a.id)-Number(b.id));
+ data.matches=data.matches.map(m=>({...{sa:0,sb:0,status:"scheduled",time:"",group:"",goalsA:"",goalsB:"",keeperA:"",keeperB:""},...m}));
+ const defaultsById=Object.fromEntries(defaultMatches.map(m=>[Number(m.id),m]));
+ data.matches=data.matches.map(m=>{
+  const d=defaultsById[Number(m.id)];
+  if(d){
+   if(!m.group)m.group=d.group;
+   if(!m.time)m.time=d.time;
+  }
+  return m;
+ });
+ if(!data.groups)data.groups=structuredClone(defaultGroups);
+ data.groups.A=Array.isArray(data.groups.A)?data.groups.A:structuredClone(defaultGroups.A);
+ data.groups.B=Array.isArray(data.groups.B)?data.groups.B:structuredClone(defaultGroups.B);
+ data.groups.C=Array.isArray(data.groups.C)?data.groups.C:structuredClone(defaultGroups.C);
+ data.groups.A=data.groups.A.map(Number).filter(Boolean);
+ data.groups.B=data.groups.B.map(Number).filter(Boolean);
+ data.groups.C=data.groups.C.map(Number).filter(Boolean);
+}
+
+
+function standings(ids){
+ return ids.map(id=>{
+  let r={id,i:0,w:0,d:0,l:0,gf:0,ga:0,p:0};
+  data.matches.filter(m=>m.status==="finished"&&(Number(m.a)===id||Number(m.b)===id)).forEach(m=>{
+   if(!(ids.includes(Number(m.a))&&ids.includes(Number(m.b))))return;
+   let a=Number(m.a)===id?Number(m.sa):Number(m.sb),b=Number(m.a)===id?Number(m.sb):Number(m.sa);
+   r.i++;r.gf+=a;r.ga+=b;if(a>b){r.w++;r.p+=3}else if(a===b){r.d++;r.p++}else r.l++;
+  });
+  r.gd=r.gf-r.ga;return r;
+ }).sort((a,b)=>b.p-a.p||b.gd-a.gd||b.gf-a.gf||tn(a.id).localeCompare(tn(b.id),"uk"));
+}
+function table(ids,title){
+ const s=standings(ids);
+ return `<div class="card"><h3>${title}</h3><table><tr><th># Команда</th><th>І</th><th>В</th><th>Н</th><th>П</th><th>ЗМ</th><th>ПМ</th><th>РМ</th><th>О</th></tr>${s.map((r,i)=>`<tr><td>${i+1}. ${esc(tn(r.id))}</td><td>${r.i}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd}</td><td><b>${r.p}</b></td></tr>`).join("")}</table></div>`;
+}
+function parseGoals(text){
+ const out=[];String(text||"").split(",").map(x=>x.trim()).filter(Boolean).forEach(item=>{
+  const m=item.match(/^(.+?)(?:\s*[:xх*]\s*|\s+)(\d+)$/i);out.push(m?{n:m[1].trim(),g:Number(m[2])}:{n:item,g:1});
+ });return out;
+}
+function scorerStats(){
+ const map={};data.matches.filter(m=>m.status!=="canceled").forEach(m=>{
+  [[m.goalsA,m.a],[m.goalsB,m.b]].forEach(([txt,t])=>parseGoals(txt).forEach(x=>{
+   const key=`${t}|${x.n.toLowerCase()}`;if(!map[key])map[key]={n:x.n,t:Number(t),g:0};map[key].g+=x.g;
+  }));
+ });return Object.values(map).sort((a,b)=>b.g-a.g||a.n.localeCompare(b.n,"uk"));
+}
+function keeperStats(){
+ const map={};data.matches.filter(m=>m.status==="finished").forEach(m=>{
+  [[m.keeperA,m.a,Number(m.sb)],[m.keeperB,m.b,Number(m.sa)]].forEach(([name,t,conceded])=>{
+   const n=String(name||"").trim();if(!n)return;const key=`${t}|${n.toLowerCase()}`;
+   if(!map[key])map[key]={n,t:Number(t),games:0,ga:0,cs:0};map[key].games++;map[key].ga+=conceded;if(conceded===0)map[key].cs++;
+  });
+ });return Object.values(map).sort((a,b)=>a.ga-b.ga||b.cs-a.cs||b.games-a.games);
+}
+function allGroupMatchesFinished(){
+ const active=data.matches.filter(m=>m.status!=="canceled");
+ return active.length>0&&active.every(m=>m.status==="finished");
+}
+function qualifiers(){
+ const groups=[standings(data.groups.A||[]),standings(data.groups.B||[]),standings(data.groups.C||[])];
+ const direct=groups.flatMap(g=>g.slice(0,2));
+ const used=new Set(direct.map(x=>Number(x.id)));
+ const remaining=groups.flat().filter(x=>!used.has(Number(x.id)))
+  .sort((x,y)=>y.p-x.p||y.gd-x.gd||y.gf-x.gf);
+ return [...direct,...remaining].slice(0,8).map(x=>x.id);
+}
+function playoffInfo(){
+ if(!allGroupMatchesFinished())return null;
+ const q=qualifiers();if(q.length<8)return null;
+ const p=data.playoff||{};
+ const qf=[
+  {id:"qf1",name:"1/4 фіналу 1",a:q[0],b:q[7],sa:p.qf1?.sa??0,sb:p.qf1?.sb??0,status:p.qf1?.status||"scheduled"},
+  {id:"qf2",name:"1/4 фіналу 2",a:q[3],b:q[4],sa:p.qf2?.sa??0,sb:p.qf2?.sb??0,status:p.qf2?.status||"scheduled"},
+  {id:"qf3",name:"1/4 фіналу 3",a:q[1],b:q[6],sa:p.qf3?.sa??0,sb:p.qf3?.sb??0,status:p.qf3?.status||"scheduled"},
+  {id:"qf4",name:"1/4 фіналу 4",a:q[2],b:q[5],sa:p.qf4?.sa??0,sb:p.qf4?.sb??0,status:p.qf4?.status||"scheduled"}
+ ];
+ function winner(m){return m&&m.status==="finished"&&Number(m.sa)!==Number(m.sb)?(Number(m.sa)>Number(m.sb)?m.a:m.b):null}
+ const s1=winner(qf[0]),s2=winner(qf[1]),s3=winner(qf[2]),s4=winner(qf[3]);
+ const sf1={id:"sf1",name:"Півфінал 1",a:s1,b:s2,sa:p.sf1?.sa??0,sb:p.sf1?.sb??0,status:p.sf1?.status||"scheduled"};
+ const sf2={id:"sf2",name:"Півфінал 2",a:s3,b:s4,sa:p.sf2?.sa??0,sb:p.sf2?.sb??0,status:p.sf2?.status||"scheduled"};
+ const f1=winner(sf1),f2=winner(sf2);
+ const final={id:"final",name:"ФІНАЛ",a:f1,b:f2,sa:p.final?.sa??0,sb:p.final?.sb??0,status:p.final?.status||"scheduled"};
+ const third={id:"third",name:"Матч за 3 місце",a:null,b:null,sa:p.third?.sa??0,sb:p.third?.sb??0,status:p.third?.status||"scheduled"};
+ return {qf,sf1,sf2,final,third,q};
+}
+function playoffMatchCard(m,admin=false){
+ if(!m)return "";
+ const ready=m.a&&m.b;
+ return `<div class="card"><h4>${esc(m.name)}</h4>${ready?`<div class="match"><div class="team">${esc(tn(m.a))}</div><div class="score">${Number(m.sa)}:${Number(m.sb)}</div><div class="team right">${esc(tn(m.b))}</div></div>`:"<p class='muted'>Очікується визначення учасників.</p>"}${admin&&ready?`<div class="row"><input type="number" min="0" value="${Number(m.sa)}" onchange="editPlayoff('${m.id}','sa',+this.value)"><input type="number" min="0" value="${Number(m.sb)}" onchange="editPlayoff('${m.id}','sb',+this.value)"><select onchange="editPlayoff('${m.id}','status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option></select></div>`:""}</div>`;
+}
+function renderPlayoff(){
+ const el=document.getElementById("playoff");
+ if(!allGroupMatchesFinished()){el.innerHTML=`<div class="card"><h2>🏆 Плей-оф</h2><p class="muted">Плей-оф відкриється автоматично після того, як <b>всі матчі</b> будуть позначені як «Завершений».</p><p>Зараз завершено: ${data.matches.filter(m=>m.status==="finished").length} з ${data.matches.length}.</p></div>`;return;}
+ const p=playoffInfo();if(!p){el.innerHTML=`<div class="card"><h2>🏆 Плей-оф</h2><p class="muted">Недостатньо команд для формування сітки.</p></div>`;return;}
+ el.innerHTML=`<div class="card"><h2>🏆 Плей-оф</h2><p class="muted">Учасники: автоматично формується рівно 8 команд — по 2 найкращі з кожної групи та найкращі команди, що залишилися.</p>${p.q.map((id,i)=>`<span class="badge">${i+1}. ${esc(tn(id))}</span>`).join("")}</div>
+ <div class="bracket"><div><h3>1/4 фіналу</h3>${p.qf.map(m=>playoffMatchCard(m,isAdmin())).join("")}</div>
+ <div><h3>Півфінали</h3>${playoffMatchCard(p.sf1,isAdmin())}${playoffMatchCard(p.sf2,isAdmin())}</div>
+ <div><h3>Фінал</h3>${playoffMatchCard(p.final,isAdmin())}</div>
+ <div><h3>3 місце</h3>${playoffMatchCard(p.third,isAdmin())}</div></div>`;
+}
+
+function render(){
+ normalize();
+ const live=data.matches.filter(m=>m.status==="LIVE");
+ document.getElementById("live").innerHTML=`<div class="card"><h2>🔴 LIVE</h2>${live.length?live.map(m=>matchCard(m,true)).join(""):"<p class='muted'>Зараз матчів LIVE немає.</p>"}</div>`;
+ document.getElementById("table").innerHTML=table(data.groups.A,"Група А")+table(data.groups.B,"Група Б")+table(data.groups.C,"Група В");
+ document.getElementById("matches").innerHTML=`<div class="card"><h2>📅 Матчі (${data.matches.length})</h2>${data.matches.map(m=>matchCard(m,false)).join("")}</div>`;
+ renderPlayoff();
+ const sc=scorerStats();document.getElementById("scorers").innerHTML=`<div class="card"><h2>🥅 Бомбардири</h2>${sc.length?`<table><tr><th>#</th><th>Гравець</th><th>Команда</th><th>Голи</th></tr>${sc.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.n)}</td><td>${esc(tn(x.t))}</td><td><b>${x.g}</b></td></tr>`).join("")}</table>`:"<p class='muted'>Після внесення голів статистика з'явиться автоматично.</p>"}</div>`;
+ const ks=keeperStats();document.getElementById("keepers").innerHTML=`<div class="card"><h2>🧤 Воротарі</h2>${ks.length?`<table><tr><th>#</th><th>Воротар</th><th>Команда</th><th>І</th><th>ПМ</th><th>Сухі</th></tr>${ks.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.n)}</td><td>${esc(tn(x.t))}</td><td>${x.games}</td><td>${x.ga}</td><td>${x.cs}</td></tr>`).join("")}</table>`:"<p class='muted'>Після внесення воротарів у матчах статистика з'явиться автоматично.</p>"}</div>`;
+ document.getElementById("referees").innerHTML=`<div class="card"><h2>👨‍⚖️ Суддівська бригада</h2><table>${refereeInfo.map(x=>`<tr><th>${esc(x[0])}</th><td>${esc(x[1])}</td></tr>`).join("")}</table></div>`;
+ renderAdmin();
+}
+function matchCard(m,live){
+ const g=matchGroup(m);
+ const status=m.status==="finished"?"Завершений":m.status==="canceled"?"Скасований":m.status==="LIVE"?"LIVE":"Запланований";
+ return `<div class="card ${live?"live":""}">${live?'<span class="livebadge">LIVE</span>':''}<div><b>Матч ${Number(m.id)} • Група ${esc(g)}</b></div><div class="muted">${esc(m.time||"Час не вказано")} • ${status}</div><div class="match"><div class="team">${esc(tn(m.a))}</div><div class="score">${Number(m.sa)}:${Number(m.sb)}</div><div class="team right">${esc(tn(m.b))}</div></div></div>`;
+}
+function renderGroupEditor(){
+ const names=ids=>(ids||[]).map(id=>tn(id)).join("
+");
+ return `<div class="card"><h3>👥 Зміна груп</h3>
+ <p class="muted">Тут можна вільно написати будь-яку кількість команд — по одній у рядку. Нові назви команд теж можна додавати.</p>
+ <p class="muted"><b>Для формату 22 матчі:</b> Група A — 4 команди, Група B — 4, Група C — 5. Система автоматично створить 6 + 6 + 10 = <b>22 матчі</b>.</p>
+ <div class="row"><textarea id="gA" rows="8" placeholder="Група A — по одній команді в рядку">${esc(names(data.groups.A))}</textarea>
+ <textarea id="gB" rows="8" placeholder="Група B — по одній команді в рядку">${esc(names(data.groups.B))}</textarea>
+ <textarea id="gC" rows="8" placeholder="Група C — 5 команд, по одній у рядку">${esc(names(data.groups.C))}</textarea></div>
+ <button class="action" onclick="saveGroups()">💾 Зберегти групи та автоматично створити матчі</button></div>`;
+}
+function renderAdmin(){
+ const el=document.getElementById("admin");
+ if(!isAdmin()){el.innerHTML=`<div class="card"><h2>⚙️ Адмін</h2><p class="muted">Редагування доступне тільки адміністратору.</p><div class="row"><input id="loginEmail" type="email" placeholder="Email"><input id="loginPass" type="password" placeholder="Пароль"></div><button class="action" onclick="login()">Увійти</button><div id="loginMsg" class="muted"></div></div>`;return;}
+ el.innerHTML=`<div class="card"><h2>⚙️ Адмін</h2><p class="muted">Ви увійшли як ${esc(currentUser.email||"адміністратор")}.</p><button class="action" onclick="logout()">Вийти</button></div>
+ ${renderGroupEditor()}<div class="card"><h3>➕ Додатковий матч</h3><p class="muted">Створити ще один матч можна тільки адміністратору. Після створення він також буде врахований у вимозі завершення всіх матчів перед плей-оф.</p><button class="action" onclick="addMatch()">➕ Створити додатковий матч</button></div>
+ ${data.matches.map(m=>adminMatch(m)).join("")}`;
+}
+function adminMatch(m){
+ const opts=teams.map((x,i)=>`<option value="${i+1}" ${Number(m.a)===i+1?"selected":""}>${esc(x)}</option>`).join("");
+ const optsB=teams.map((x,i)=>`<option value="${i+1}" ${Number(m.b)===i+1?"selected":""}>${esc(x)}</option>`).join("");
+ return `<div class="card"><h3>Матч ${m.id} • Група ${esc(matchGroup(m))}</h3><div class="row"><select onchange="edit(${m.id},'a',+this.value)">${opts}</select><input type="number" min="0" value="${Number(m.sa)}" onchange="edit(${m.id},'sa',+this.value)"><b>:</b><input type="number" min="0" value="${Number(m.sb)}" onchange="edit(${m.id},'sb',+this.value)"><select onchange="edit(${m.id},'b',+this.value)">${optsB}</select></div>
+ <div class="row"><select onchange="edit(${m.id},'status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="LIVE" ${m.status==="LIVE"?"selected":""}>LIVE</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option><option value="canceled" ${m.status==="canceled"?"selected":""}>Скасований</option></select><input value="${esc(m.time)}" placeholder="Час (можна змінити)" onchange="edit(${m.id},'time',this.value)"><select onchange="edit(${m.id},'group',this.value)"><option value="">Група…</option><option value="A" ${m.group==="A"?"selected":""}>Група A</option><option value="B" ${m.group==="B"?"selected":""}>Група B</option><option value="C" ${m.group==="C"?"selected":""}>Група C</option></select></div>
+ <div class="row"><input value="${esc(m.goalsA)}" placeholder="Голи ${esc(tn(m.a))} напр. Іван:2, Петро:1" onchange="edit(${m.id},'goalsA',this.value)"><input value="${esc(m.goalsB)}" placeholder="Голи ${esc(tn(m.b))} напр. Сидор:1" onchange="edit(${m.id},'goalsB',this.value)"></div>
+ <div class="row"><input value="${esc(m.keeperA)}" placeholder="Воротар ${esc(tn(m.a))}" onchange="edit(${m.id},'keeperA',this.value)"><input value="${esc(m.keeperB)}" placeholder="Воротар ${esc(tn(m.b))}" onchange="edit(${m.id},'keeperB',this.value)"></div>
+ ${m.id>21?`<button class="danger" onclick="deleteMatch(${m.id})">🗑 Видалити додатковий матч</button>`:""}</div>`;
+}
+async function saveOnline(){
+ localStorage.setItem("itl2026",JSON.stringify(data));if(!remoteLoaded||!isAdmin())return;
+ try{await set(tournamentRef,data);setSync("● Онлайн синхронізація",true)}catch(e){console.error(e);setSync("● Помилка синхронізації",false);alert("Не вдалося зберегти. Перевір Firebase Rules.")}
+}
+async function edit(id,k,v){
+ if(!isAdmin()){alert("Доступ заборонений.");return}const m=data.matches.find(x=>Number(x.id)===Number(id));if(!m)return;m[k]=v;
+ if(["sa","sb"].includes(k)&&Number(v)<0)m[k]=0;await saveOnline();render();
+}
+async function addMatch(){
+ if(!isAdmin())return;const id=data.matches.length?Math.max(...data.matches.map(m=>Number(m.id)))+1:1;
+ data.matches.push(makeMatch(id,1,2,"","A"));await saveOnline();render();
+}
+async function deleteMatch(id){
+ if(!isAdmin()||Number(id)<=21)return;if(!confirm("Видалити цей додатковий матч?"))return;
+ data.matches=data.matches.filter(m=>Number(m.id)!==Number(id));await saveOnline();render();
+}
+function buildGroupMatches(groups){
+ const oldByPair=new Map();
+ (data.matches||[]).forEach(m=>{
+  const a=Number(m.a),b=Number(m.b),g=String(m.group||"").toUpperCase();
+  if(a&&b&&g){const key=[g,Math.min(a,b),Math.max(a,b)].join("|");if(!oldByPair.has(key))oldByPair.set(key,m);}
+ });
+ const out=[]; let id=1;
+ for(const [group,ids] of Object.entries(groups)){
+  for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
+   const a=Number(ids[i]),b=Number(ids[j]);
+   const old=oldByPair.get([group,a,b].join("|"));
+   const m=makeMatch(id++,a,b,old?.time||"",group);
+   if(old)Object.assign(m,{sa:Number(old.sa)||0,sb:Number(old.sb)||0,status:old.status||"scheduled",goalsA:old.goalsA||"",goalsB:old.goalsB||"",keeperA:old.keeperA||"",keeperB:old.keeperB||""});
+   out.push(m);
+  }
+ }
+ return out;
+}
+async function saveGroups(){
+ if(!isAdmin())return;
+ const parseGroup=id=>String(document.getElementById(id)?.value||"").split(/\n|,/).map(x=>x.trim()).filter(Boolean);
+ const raw=[parseGroup("gA"),parseGroup("gB"),parseGroup("gC")];
+ if(raw.some(g=>g.length<2)){alert("У кожній групі має бути щонайменше 2 команди.");return}
+ const names=[];
+ const findOrAdd=name=>{const key=name.trim().toLowerCase();const idx=names.findIndex(x=>x.toLowerCase()===key);if(idx>=0)return idx+1;names.push(name.trim());return names.length;};
+ const A=raw[0].map(findOrAdd),B=raw[1].map(findOrAdd),C=raw[2].map(findOrAdd);
+ if(names.length!==13 || A.length!==4 || B.length!==4 || C.length!==5){alert(`Для 22 матчів потрібно саме 13 команд: 4 у Групі A, 4 у Групі B і 5 у Групі C. Зараз: A=${A.length}, B=${B.length}, C=${C.length}, разом=${names.length}.`);return}
+ if(!confirm("Створити заново 22 матчі групового етапу? Рахунки вже існуючих пар будуть збережені, якщо пара не змінилася."))return;
+ data.teamNames=names;teams=[...names];data.groups={A,B,C};data.matches=buildGroupMatches(data.groups);data.playoff=null;
+ await saveOnline();render();alert("Готово: 22 матчі — A: 6, B: 6, C: 10.");
+}
+async function editPlayoff(id,k,v){
+ if(!isAdmin())return;if(!data.playoff)data.playoff={};if(!data.playoff[id])data.playoff[id]={};
+ data.playoff[id][k]=v;await saveOnline();render();
+}
+async function login(){
+ const email=document.getElementById("loginEmail")?.value.trim(),pass=document.getElementById("loginPass")?.value,msg=document.getElementById("loginMsg");
+ try{const cred=await signInWithEmailAndPassword(auth,email,pass);if(cred.user.uid===ADMIN_UID){currentUser=cred.user;render();setSync("● Ви увійшли як адміністратор",true)}else{await signOut(auth);if(msg)msg.textContent="Цей акаунт не має прав адміністратора."}}catch(e){if(msg)msg.textContent="Помилка входу: перевір email і пароль."}
+}
+async function logout(){await signOut(auth);currentUser=null;render();}
+window.openTab=openTab;window.edit=edit;window.login=login;window.logout=logout;window.addMatch=addMatch;window.deleteMatch=deleteMatch;window.saveGroups=saveGroups;window.editPlayoff=editPlayoff;
+
+onAuthStateChanged(auth,user=>{currentUser=user;renderAdmin();if(user)setSync(isAdmin()?"● Адмін авторизований":"● Авторизовано",true)});
+onValue(tournamentRef,snapshot=>{
+ try{
+  if(snapshot.exists()){data=snapshot.val();normalize();localStorage.setItem("itl2026",JSON.stringify(data))}
+  else{data=structuredClone(defaultData);normalize();if(isAdmin())set(tournamentRef,data)}
+  remoteLoaded=true;setSync("● Онлайн синхронізація увімкнена",true);render();
+ }catch(e){console.error(e);setSync("● Firebase: помилка даних",false);render();}
+},error=>{console.error(error);setSync("● Помилка Firebase",false);render()});
+normalize();render();
+</script>
+</body>
+</html>
