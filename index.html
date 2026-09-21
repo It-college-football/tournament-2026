@@ -234,8 +234,7 @@ function matchCard(m,live){
  return `<div class="card ${live?"live":""}">${live?'<span class="livebadge">LIVE</span>':''}<div><b>Матч ${Number(m.id)} • Група ${esc(g)}</b></div><div class="muted">${esc(m.time||"Час не вказано")} • ${status}</div><div class="match"><div class="team">${esc(tn(m.a))}</div><div class="score">${Number(m.sa)}:${Number(m.sb)}</div><div class="team right">${esc(tn(m.b))}</div></div></div>`;
 }
 function renderGroupEditor(){
- const names=ids=>(ids||[]).map(id=>tn(id)).join("
-");
+ const names=ids=>(ids||[]).map(id=>tn(id)).join("\n");
  return `<div class="card"><h3>👥 Зміна груп</h3>
  <p class="muted">Тут можна вільно написати будь-яку кількість команд — по одній у рядку. Нові назви команд теж можна додавати.</p>
  <p class="muted"><b>Для формату 22 матчі:</b> Група A — 4 команди, Група B — 4, Група C — 5. Система автоматично створить 6 + 6 + 10 = <b>22 матчі</b>.</p>
