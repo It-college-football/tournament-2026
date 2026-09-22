@@ -234,14 +234,15 @@ function matchCard(m,live){
  return `<div class="card ${live?"live":""}">${live?'<span class="livebadge">LIVE</span>':''}<div><b>Матч ${Number(m.id)} • Група ${esc(g)}</b></div><div class="muted">${esc(m.time||"Час не вказано")} • ${status}</div><div class="match"><div class="team">${esc(tn(m.a))}</div><div class="score">${Number(m.sa)}:${Number(m.sb)}</div><div class="team right">${esc(tn(m.b))}</div></div></div>`;
 }
 function renderGroupEditor(){
- const names=ids=>(ids||[]).map(id=>tn(id)).join("\n");
+ const names=ids=>(ids||[]).map(id=>tn(id)).join("
+");
  return `<div class="card"><h3>👥 Зміна груп</h3>
  <p class="muted">Тут можна вільно написати будь-яку кількість команд — по одній у рядку. Нові назви команд теж можна додавати.</p>
- <p class="muted"><b>Для формату 22 матчі:</b> Група A — 4 команди, Група B — 4, Група C — 5. Система автоматично створить 6 + 6 + 10 = <b>22 матчі</b>.</p>
+ <p class="muted"><b>Групи змінюють тільки таблицю.</b> Існуючі матчі, рахунки, час та результати не змінюються. Матчі ти заповнюєш сам у розділі нижче.</p>
  <div class="row"><textarea id="gA" rows="8" placeholder="Група A — по одній команді в рядку">${esc(names(data.groups.A))}</textarea>
  <textarea id="gB" rows="8" placeholder="Група B — по одній команді в рядку">${esc(names(data.groups.B))}</textarea>
  <textarea id="gC" rows="8" placeholder="Група C — 5 команд, по одній у рядку">${esc(names(data.groups.C))}</textarea></div>
- <button class="action" onclick="saveGroups()">💾 Зберегти групи та автоматично створити матчі</button></div>`;
+ <button class="action" onclick="saveGroups()">💾 Зберегти групи</button></div>`;
 }
 function renderAdmin(){
  const el=document.getElementById("admin");
@@ -256,76 +257,4 @@ function adminMatch(m){
  return `<div class="card"><h3>Матч ${m.id} • Група ${esc(matchGroup(m))}</h3><div class="row"><select onchange="edit(${m.id},'a',+this.value)">${opts}</select><input type="number" min="0" value="${Number(m.sa)}" onchange="edit(${m.id},'sa',+this.value)"><b>:</b><input type="number" min="0" value="${Number(m.sb)}" onchange="edit(${m.id},'sb',+this.value)"><select onchange="edit(${m.id},'b',+this.value)">${optsB}</select></div>
  <div class="row"><select onchange="edit(${m.id},'status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="LIVE" ${m.status==="LIVE"?"selected":""}>LIVE</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option><option value="canceled" ${m.status==="canceled"?"selected":""}>Скасований</option></select><input value="${esc(m.time)}" placeholder="Час (можна змінити)" onchange="edit(${m.id},'time',this.value)"><select onchange="edit(${m.id},'group',this.value)"><option value="">Група…</option><option value="A" ${m.group==="A"?"selected":""}>Група A</option><option value="B" ${m.group==="B"?"selected":""}>Група B</option><option value="C" ${m.group==="C"?"selected":""}>Група C</option></select></div>
  <div class="row"><input value="${esc(m.goalsA)}" placeholder="Голи ${esc(tn(m.a))} напр. Іван:2, Петро:1" onchange="edit(${m.id},'goalsA',this.value)"><input value="${esc(m.goalsB)}" placeholder="Голи ${esc(tn(m.b))} напр. Сидор:1" onchange="edit(${m.id},'goalsB',this.value)"></div>
- <div class="row"><input value="${esc(m.keeperA)}" placeholder="Воротар ${esc(tn(m.a))}" onchange="edit(${m.id},'keeperA',this.value)"><input value="${esc(m.keeperB)}" placeholder="Воротар ${esc(tn(m.b))}" onchange="edit(${m.id},'keeperB',this.value)"></div>
- ${m.id>21?`<button class="danger" onclick="deleteMatch(${m.id})">🗑 Видалити додатковий матч</button>`:""}</div>`;
-}
-async function saveOnline(){
- localStorage.setItem("itl2026",JSON.stringify(data));if(!remoteLoaded||!isAdmin())return;
- try{await set(tournamentRef,data);setSync("● Онлайн синхронізація",true)}catch(e){console.error(e);setSync("● Помилка синхронізації",false);alert("Не вдалося зберегти. Перевір Firebase Rules.")}
-}
-async function edit(id,k,v){
- if(!isAdmin()){alert("Доступ заборонений.");return}const m=data.matches.find(x=>Number(x.id)===Number(id));if(!m)return;m[k]=v;
- if(["sa","sb"].includes(k)&&Number(v)<0)m[k]=0;await saveOnline();render();
-}
-async function addMatch(){
- if(!isAdmin())return;const id=data.matches.length?Math.max(...data.matches.map(m=>Number(m.id)))+1:1;
- data.matches.push(makeMatch(id,1,2,"","A"));await saveOnline();render();
-}
-async function deleteMatch(id){
- if(!isAdmin()||Number(id)<=21)return;if(!confirm("Видалити цей додатковий матч?"))return;
- data.matches=data.matches.filter(m=>Number(m.id)!==Number(id));await saveOnline();render();
-}
-function buildGroupMatches(groups){
- const oldByPair=new Map();
- (data.matches||[]).forEach(m=>{
-  const a=Number(m.a),b=Number(m.b),g=String(m.group||"").toUpperCase();
-  if(a&&b&&g){const key=[g,Math.min(a,b),Math.max(a,b)].join("|");if(!oldByPair.has(key))oldByPair.set(key,m);}
- });
- const out=[]; let id=1;
- for(const [group,ids] of Object.entries(groups)){
-  for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
-   const a=Number(ids[i]),b=Number(ids[j]);
-   const old=oldByPair.get([group,a,b].join("|"));
-   const m=makeMatch(id++,a,b,old?.time||"",group);
-   if(old)Object.assign(m,{sa:Number(old.sa)||0,sb:Number(old.sb)||0,status:old.status||"scheduled",goalsA:old.goalsA||"",goalsB:old.goalsB||"",keeperA:old.keeperA||"",keeperB:old.keeperB||""});
-   out.push(m);
-  }
- }
- return out;
-}
-async function saveGroups(){
- if(!isAdmin())return;
- const parseGroup=id=>String(document.getElementById(id)?.value||"").split(/\n|,/).map(x=>x.trim()).filter(Boolean);
- const raw=[parseGroup("gA"),parseGroup("gB"),parseGroup("gC")];
- if(raw.some(g=>g.length<2)){alert("У кожній групі має бути щонайменше 2 команди.");return}
- const names=[];
- const findOrAdd=name=>{const key=name.trim().toLowerCase();const idx=names.findIndex(x=>x.toLowerCase()===key);if(idx>=0)return idx+1;names.push(name.trim());return names.length;};
- const A=raw[0].map(findOrAdd),B=raw[1].map(findOrAdd),C=raw[2].map(findOrAdd);
- if(names.length!==13 || A.length!==4 || B.length!==4 || C.length!==5){alert(`Для 22 матчів потрібно саме 13 команд: 4 у Групі A, 4 у Групі B і 5 у Групі C. Зараз: A=${A.length}, B=${B.length}, C=${C.length}, разом=${names.length}.`);return}
- if(!confirm("Створити заново 22 матчі групового етапу? Рахунки вже існуючих пар будуть збережені, якщо пара не змінилася."))return;
- data.teamNames=names;teams=[...names];data.groups={A,B,C};data.matches=buildGroupMatches(data.groups);data.playoff=null;
- await saveOnline();render();alert("Готово: 22 матчі — A: 6, B: 6, C: 10.");
-}
-async function editPlayoff(id,k,v){
- if(!isAdmin())return;if(!data.playoff)data.playoff={};if(!data.playoff[id])data.playoff[id]={};
- data.playoff[id][k]=v;await saveOnline();render();
-}
-async function login(){
- const email=document.getElementById("loginEmail")?.value.trim(),pass=document.getElementById("loginPass")?.value,msg=document.getElementById("loginMsg");
- try{const cred=await signInWithEmailAndPassword(auth,email,pass);if(cred.user.uid===ADMIN_UID){currentUser=cred.user;render();setSync("● Ви увійшли як адміністратор",true)}else{await signOut(auth);if(msg)msg.textContent="Цей акаунт не має прав адміністратора."}}catch(e){if(msg)msg.textContent="Помилка входу: перевір email і пароль."}
-}
-async function logout(){await signOut(auth);currentUser=null;render();}
-window.openTab=openTab;window.edit=edit;window.login=login;window.logout=logout;window.addMatch=addMatch;window.deleteMatch=deleteMatch;window.saveGroups=saveGroups;window.editPlayoff=editPlayoff;
-
-onAuthStateChanged(auth,user=>{currentUser=user;renderAdmin();if(user)setSync(isAdmin()?"● Адмін авторизований":"● Авторизовано",true)});
-onValue(tournamentRef,snapshot=>{
- try{
-  if(snapshot.exists()){data=snapshot.val();normalize();localStorage.setItem("itl2026",JSON.stringify(data))}
-  else{data=structuredClone(defaultData);normalize();if(isAdmin())set(tournamentRef,data)}
-  remoteLoaded=true;setSync("● Онлайн синхронізація увімкнена",true);render();
- }catch(e){console.error(e);setSync("● Firebase: помилка даних",false);render();}
-},error=>{console.error(error);setSync("● Помилка Firebase",false);render()});
-normalize();render();
-</script>
-</body>
-</html>
+ <div class="row"><input value="${esc(m.keeperA)}" placeholder="Воротар ${esc(tn(m.a))}" onchange="edit(${m.id},'keeperA',this.val
