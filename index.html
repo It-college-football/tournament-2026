@@ -220,7 +220,7 @@ function render(){
  normalize();
  const live=data.matches.filter(m=>m.status==="LIVE");
  document.getElementById("live").innerHTML=`<div class="card"><h2>🔴 LIVE</h2>${live.length?live.map(m=>matchCard(m,true)).join(""):"<p class='muted'>Зараз матчів LIVE немає.</p>"}</div>`;
- document.getElementById("table").innerHTML=table(data.groups.A,"Група А")+table(data.groups.B,"Група Б")+table(data.groups.C,"Група В");
+ document.getElementById("table").innerHTML=table(data.groups.A,"Група А")+table(data.groups.B,"Група Б")+table(data.groups.C,"Група С");
  document.getElementById("matches").innerHTML=`<div class="card"><h2>📅 Матчі (${data.matches.length})</h2>${data.matches.map(m=>matchCard(m,false)).join("")}</div>`;
  renderPlayoff();
  const sc=scorerStats();document.getElementById("scorers").innerHTML=`<div class="card"><h2>🥅 Бомбардири</h2>${sc.length?`<table><tr><th>#</th><th>Гравець</th><th>Команда</th><th>Голи</th></tr>${sc.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.n)}</td><td>${esc(tn(x.t))}</td><td><b>${x.g}</b></td></tr>`).join("")}</table>`:"<p class='muted'>Після внесення голів статистика з'явиться автоматично.</p>"}</div>`;
@@ -234,8 +234,7 @@ function matchCard(m,live){
  return `<div class="card ${live?"live":""}">${live?'<span class="livebadge">LIVE</span>':''}<div><b>Матч ${Number(m.id)} • Група ${esc(g)}</b></div><div class="muted">${esc(m.time||"Час не вказано")} • ${status}</div><div class="match"><div class="team">${esc(tn(m.a))}</div><div class="score">${Number(m.sa)}:${Number(m.sb)}</div><div class="team right">${esc(tn(m.b))}</div></div></div>`;
 }
 function renderGroupEditor(){
- const names=ids=>(ids||[]).map(id=>tn(id)).join("
-");
+ const names=ids=>(ids||[]).map(id=>tn(id)).join("\n");
  return `<div class="card"><h3>👥 Зміна груп</h3>
  <p class="muted">Тут можна вільно написати будь-яку кількість команд — по одній у рядку. Нові назви команд теж можна додавати.</p>
  <p class="muted"><b>Групи змінюють тільки таблицю.</b> Існуючі матчі, рахунки, час та результати не змінюються. Матчі ти заповнюєш сам у розділі нижче.</p>
@@ -257,4 +256,4 @@ function adminMatch(m){
  return `<div class="card"><h3>Матч ${m.id} • Група ${esc(matchGroup(m))}</h3><div class="row"><select onchange="edit(${m.id},'a',+this.value)">${opts}</select><input type="number" min="0" value="${Number(m.sa)}" onchange="edit(${m.id},'sa',+this.value)"><b>:</b><input type="number" min="0" value="${Number(m.sb)}" onchange="edit(${m.id},'sb',+this.value)"><select onchange="edit(${m.id},'b',+this.value)">${optsB}</select></div>
  <div class="row"><select onchange="edit(${m.id},'status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="LIVE" ${m.status==="LIVE"?"selected":""}>LIVE</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option><option value="canceled" ${m.status==="canceled"?"selected":""}>Скасований</option></select><input value="${esc(m.time)}" placeholder="Час (можна змінити)" onchange="edit(${m.id},'time',this.value)"><select onchange="edit(${m.id},'group',this.value)"><option value="">Група…</option><option value="A" ${m.group==="A"?"selected":""}>Група A</option><option value="B" ${m.group==="B"?"selected":""}>Група B</option><option value="C" ${m.group==="C"?"selected":""}>Група C</option></select></div>
  <div class="row"><input value="${esc(m.goalsA)}" placeholder="Голи ${esc(tn(m.a))} напр. Іван:2, Петро:1" onchange="edit(${m.id},'goalsA',this.value)"><input value="${esc(m.goalsB)}" placeholder="Голи ${esc(tn(m.b))} напр. Сидор:1" onchange="edit(${m.id},'goalsB',this.value)"></div>
- <div class="row"><input value="${esc(m.keeperA)}" placeholder="Воротар ${esc(tn(m.a))}" onchange="edit(${m.id},'keeperA',this.val
+ <div class="row"><input value="${esc(m.keeperA)}" placeholder="Воротар ${esc(tn(m.a))}" onchange="edit(${m.id},'keeperA',this.va
