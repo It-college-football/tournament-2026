@@ -186,11 +186,11 @@ function playoffInfo(){
  const q=qualifiers();if(q.length<8)return null;
  const p=data.playoff||{};
  const qf=[
-  {id:"qf1",name:"1/4 фіналу 1",a:q[0],b:q[7],sa:p.qf1?.sa??0,sb:p.qf1?.sb??0,status:p.qf1?.status||"scheduled"},
-  {id:"qf2",name:"1/4 фіналу 2",a:q[3],b:q[4],sa:p.qf2?.sa??0,sb:p.qf2?.sb??0,status:p.qf2?.status||"scheduled"},
-  {id:"qf3",name:"1/4 фіналу 3",a:q[1],b:q[6],sa:p.qf3?.sa??0,sb:p.qf3?.sb??0,status:p.qf3?.status||"scheduled"},
-  {id:"qf4",name:"1/4 фіналу 4",a:q[2],b:q[5],sa:p.qf4?.sa??0,sb:p.qf4?.sb??0,status:p.qf4?.status||"scheduled"}
- ];
+   {id:"qf1",name:"1/4 фіналу 1",a:7,b:11,sa:p.qf1?.sa??0,sb:p.qf1?.sb??0,status:p.qf1?.status||"scheduled"},
+   {id:"qf2",name:"1/4 фіналу 2",a:2,b:1,sa:p.qf2?.sa??0,sb:p.qf2?.sb??0,status:p.qf2?.status||"scheduled"},
+   {id:"qf3",name:"1/4 фіналу 3",a:6,b:8,sa:p.qf3?.sa??0,sb:p.qf3?.sb??0,status:p.qf3?.status||"scheduled"},
+   {id:"qf4",name:"1/4 фіналу 4",a:13,b:4,sa:p.qf4?.sa??0,sb:p.qf4?.sb??0,status:p.qf4?.status||"scheduled"}
+];
  function winner(m){return m&&m.status==="finished"&&Number(m.sa)!==Number(m.sb)?(Number(m.sa)>Number(m.sb)?m.a:m.b):null}
  const s1=winner(qf[0]),s2=winner(qf[1]),s3=winner(qf[2]),s4=winner(qf[3]);
  const sf1={id:"sf1",name:"Півфінал 1",a:s1,b:s2,sa:p.sf1?.sa??0,sb:p.sf1?.sb??0,status:p.sf1?.status||"scheduled"};
