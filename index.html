@@ -30,6 +30,7 @@ button.danger{background:#b91c1c;color:white;border:0;padding:9px 12px;border-ra
 <nav>
 <button onclick="switchYear(2026)">📦 2026</button>
 <button onclick="switchYear(2027)">🆕 2027</button>
+<button onclick="openTab('history',this)">📚 Історія 2026</button>
 <button class="active" onclick="openTab('live',this)">🔴 LIVE</button>
 <button onclick="openTab('table',this)">📊 Таблиця</button>
 <button onclick="openTab('matches',this)">📅 Матчі</button>
@@ -42,12 +43,12 @@ button.danger{background:#b91c1c;color:white;border:0;padding:9px 12px;border-ra
 <main>
 <section id="live"></section><section id="table" class="hidden"></section><section id="matches" class="hidden"></section>
 <section id="playoff" class="hidden"></section><section id="scorers" class="hidden"></section>
-<section id="keepers" class="hidden"></section><section id="referees" class="hidden"></section><section id="admin" class="hidden"></section>
+<section id="keepers" class="hidden"></section><section id="referees" class="hidden"></section><section id="history" class="hidden"></section><section id="admin" class="hidden"></section>
 </main>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 const firebaseConfig={
@@ -175,6 +176,7 @@ function openTab(id,b){
  document.getElementById(id).classList.remove("hidden");
  document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
  if(b)b.classList.add("active");
+ if(id==="history"){renderHistory();return;}
  render();
 }
 
@@ -263,13 +265,11 @@ function playoffInfo(){
  const sf1=playoffRecord("sf1","Півфінал 1",win(qf[0]),win(qf[1]));
  const sf2=playoffRecord("sf2","Півфінал 2",win(qf[2]),win(qf[3]));
  const final=playoffRecord("final","ФІНАЛ",win(sf1),win(sf2));
- const third=playoffRecord("third","Матч за 3 місце",loser(qf[0],qf[1]),loser(qf[2],qf[3]));
+ const third=playoffRecord("third","Матч за 3 місце",loser(qf[0]),loser(qf[1]));
  return {q,qf,sf1,sf2,final,third};
- function loser(a,b){
-  const wa=win(a),wb=win(b);if(!a||!b||!wa||!wb)return null;
-  const la=wa===Number(a.a)?Number(a.b):Number(a.a);
-  const lb=wb===Number(b.a)?Number(b.b):Number(b.a);
-  return [la,lb];
+ function loser(m){
+  const w=win(m);if(!m||!w)return null;
+  return w===Number(m.a)?Number(m.b):Number(m.a);
  }
  function playoffRecord(id,name,a,b){
   const old=p[id]||{};
@@ -319,7 +319,7 @@ function playoffMatchCard(m,admin=false){
  <div class="match"><div class="team">${esc(aName)}</div><div class="score">${Number(m.sa)}:${Number(m.sb)}</div><div class="team right">${esc(bName)}</div></div>
  ${admin?`<div class="row"><input type="number" min="0" value="${Number(m.sa)}" onchange="editPlayoff('${m.id}','sa',Math.max(0,+this.value))"><input type="number" min="0" value="${Number(m.sb)}" onchange="editPlayoff('${m.id}','sb',Math.max(0,+this.value))"></div>
  <div class="row"><input value="${esc(m.time)}" placeholder="Час" onchange="editPlayoff('${m.id}','time',this.value)"><select onchange="editPlayoff('${m.id}','status',this.value)"><option value="scheduled" ${m.status==="scheduled"?"selected":""}>Запланований</option><option value="LIVE" ${m.status==="LIVE"?"selected":""}>LIVE</option><option value="finished" ${m.status==="finished"?"selected":""}>Завершений</option></select></div>
- ${!Array.isArray(m.a)?goalEditor({...m,playoff:true},"A")+goalEditor({...m,playoff:true},"B")+keeperEditor(m,"A")+keeperEditor(m,"B"):""}
+ ${!Array.isArray(m.a)?goalEditor({...m,playoff:true},"A")+goalEditor({...m,playoff:true},"B")+keeperEditor({...m,playoff:true},"A")+keeperEditor({...m,playoff:true},"B"):""}
  <div class="row"><select onchange="editPlayoff('${m.id}','penaltyWinner',this.value)"><option value="">Переможець за пенальті — якщо нічия</option><option value="${m.a}" ${Number(m.penaltyWinner)===Number(m.a)?"selected":""}>${esc(tn(m.a))}</option><option value="${m.b}" ${Number(m.penaltyWinner)===Number(m.b)?"selected":""}>${esc(tn(m.b))}</option></select></div>`:""}</div>`;
 }
 function renderPlayoff(){
@@ -356,8 +356,8 @@ function renderRosterEditor(){
  return `<div class="card"><h3>👥 Склад команд</h3><p class="muted">Додай воротаря або гравця. Після цього його можна буде обрати прямо в матчі.</p>
  <div class="row"><select id="rosterTeam">${data.teamNames.map((x,i)=>`<option value="${i+1}">${esc(x)}</option>`).join("")}</select><input id="rosterName" placeholder="Прізвище та ім'я"></div>
  <div class="row"><button class="action" onclick="addKeeper()">🧤 Додати воротаря</button><button class="action" onclick="addPlayer()">⚽ Додати гравця</button></div>
- <div class="muted">Воротарі: ${data.keepers.map(x=>`${esc(x.name)} (${esc(tn(x.teamId))})`).join(", ")||"—"}</div>
- <div class="muted">Гравці: ${data.players.map(x=>`${esc(x.name)} (${esc(tn(x.teamId))})`).join(", ")||"—"}</div></div>`;
+ <div><b>🧤 Воротарі</b>${data.keepers.length?data.keepers.map((x,i)=>`<div class="row"><span style="flex:1">${esc(x.name)} — ${esc(tn(x.teamId))}</span><button class="danger" onclick="deleteKeeper(${i})">🗑 Видалити</button></div>`).join(""):"<p class='muted'>—</p>"}</div>
+ <div><b>⚽ Гравці</b>${data.players.length?data.players.map((x,i)=>`<div class="row"><span style="flex:1">${esc(x.name)} — ${esc(tn(x.teamId))}</span><button class="danger" onclick="deletePlayer(${i})">🗑 Видалити</button></div>`).join(""):"<p class='muted'>—</p>"}</div></div>`;
 }
 function renderGroupEditor(){
  const names=ids=>(ids||[]).map(id=>tn(id)).join("\n");
@@ -419,6 +419,22 @@ async function addPlayer(){
  if(!teamId||!name)return alert("Вкажи команду та ім'я гравця.");
  if(!data.players.some(x=>Number(x.teamId)===teamId&&x.name.toLowerCase()===name.toLowerCase()))data.players.push({teamId,name});
  document.getElementById("rosterName").value="";await saveOnline();render();
+}
+async function deleteKeeper(index){
+ if(!isAdmin())return;
+ if(!data.keepers[index])return;
+ const x=data.keepers[index];
+ if(!confirm(`Видалити воротаря "${x.name}"? Старі матчі та статистика залишаться.`))return;
+ data.keepers.splice(index,1);
+ await saveOnline();render();
+}
+async function deletePlayer(index){
+ if(!isAdmin())return;
+ if(!data.players[index])return;
+ const x=data.players[index];
+ if(!confirm(`Видалити гравця "${x.name}"? Старі голи та статистика залишаться.`))return;
+ data.players.splice(index,1);
+ await saveOnline();render();
 }
 function goalArray(m,side){return normalizeGoals(side==="A"?m.goalsA:m.goalsB)}
 async function addGoal(id,side){
@@ -543,6 +559,25 @@ async function switchYear(y){
  });
 }
 
+async function renderHistory(){
+ const el=document.getElementById("history");
+ el.innerHTML=`<div class="card"><h2>📚 Історія турніру 2026</h2><p class="muted">У цьому розділі зберігаються результати, матчі, таблиці, бомбардири, воротарі та плей-оф турніру 2026. Дані 2027 року зберігаються окремо.</p><p>Завантаження архіву…</p></div>`;
+ try{
+  const snap=await get(refs[2026]);
+  if(!snap.exists()){el.innerHTML=`<div class="card"><h2>📚 Історія турніру 2026</h2><p class="muted">Архів 2026 ще не знайдений.</p></div>`;return;}
+  const oldData=data,oldYear=year;
+  data=snap.val();year=2026;normalize();
+  const sc=scorerStats(),ks=keeperStats(),p=playoffInfo();
+  const groups=table(data.groups.A,"Група A")+table(data.groups.B,"Група B")+table(data.groups.C,"Група C");
+  const matches=`<div class="card"><h3>📅 Матчі 2026</h3>${data.matches.map(m=>matchCard(m,false)).join("")}</div>`;
+  const playoffs=p?`<div class="card"><h3>🏆 Плей-оф 2026</h3></div><div class="bracket"><div><h4>1/4 фіналу</h4>${p.qf.map(m=>playoffMatchCard(m,false)).join("")}</div><div><h4>Півфінали</h4>${playoffMatchCard(p.sf1,false)}${playoffMatchCard(p.sf2,false)}</div><div><h4>Фінал</h4>${playoffMatchCard(p.final,false)}</div><div><h4>3 місце</h4>${playoffMatchCard(p.third,false)}</div></div>`:"";
+  el.innerHTML=`<div class="card"><h2>📚 Історія турніру 2026</h2><p class="muted">Архів збережено окремо від турніру 2027.</p></div>${groups}
+  <div class="card"><h3>🥅 Бомбардири 2026</h3>${sc.length?`<table><tr><th>#</th><th>Гравець</th><th>Команда</th><th>Голи</th></tr>${sc.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.n)}</td><td>${esc(tn(x.t))}</td><td><b>${x.g}</b></td></tr>`).join("")}</table>`:"<p class='muted'>Немає даних.</p>"}</div>
+  <div class="card"><h3>🧤 Воротарі 2026</h3>${ks.length?`<table><tr><th>#</th><th>Воротар</th><th>Команда</th><th>І</th><th>ПМ</th><th>Сухі</th></tr>${ks.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.n)}</td><td>${esc(tn(x.t))}</td><td>${x.games}</td><td>${x.ga}</td><td>${x.cs}</td></tr>`).join("")}</table>`:"<p class='muted'>Немає даних.</p>"}</div>${matches}${playoffs}`;
+  data=oldData;year=oldYear;
+ }catch(e){console.error(e);el.innerHTML=`<div class="card"><h2>📚 Історія турніру 2026</h2><p class="muted">Не вдалося завантажити архів.</p></div>`;}
+}
+
 function render(){
  if(!data)return;
  normalize();
@@ -561,7 +596,7 @@ function render(){
 }
 
 window.openTab=openTab;window.login=login;window.logout=logout;window.addMatch=addMatch;window.deleteMatch=deleteMatch;
-window.saveGroups=saveGroups;window.setMatchField=setMatchField;window.addKeeper=addKeeper;window.addPlayer=addPlayer;
+window.saveGroups=saveGroups;window.setMatchField=setMatchField;window.addKeeper=addKeeper;window.addPlayer=addPlayer;window.deleteKeeper=deleteKeeper;window.deletePlayer=deletePlayer;
 window.addGoal=addGoal;window.changeGoal=changeGoal;window.removeGoal=removeGoal;window.setPlayGoal=setPlayGoal;
 window.editPlayoff=editPlayoff;window.addPlayoffGoal=addPlayoffGoal;window.changePlayoffGoal=changePlayoffGoal;
 window.removePlayoffGoal=removePlayoffGoal;window.setPlayoffGoal=setPlayoffGoal;window.switchYear=switchYear;
